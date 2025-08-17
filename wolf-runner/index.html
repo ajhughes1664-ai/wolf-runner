@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Wolf Runner</title>
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#764ba2">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            touch-action: none;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        
+        #gameContainer {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            height: 100vh;
+            max-height: 600px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        canvas {
+            border: 3px solid #fff;
+            border-radius: 10px;
+            display: block;
+            image-rendering: crisp-edges;
+            width: 100%;
+            flex: 1;
+        }
+        
+        #gameInfo {
+            color: white;
+            text-align: center;
+            margin-top: 5px;
+            font-size: 14px;
+        }
+        
+        .controls {
+            color: white;
+            text-align: center;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        
+        .title {
+            color: white;
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 5px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        
+        /* Mobile controls */
+        #mobileControls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: none;
+            justify-content: space-between;
+            padding: 0 20px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .control-group {
+            display: flex;
+            gap: 10px;
+            pointer-events: auto;
+        }
+        
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+        
+        .control-btn:active {
+            background: rgba(255, 255, 255, 0.5);
+            transform: scale(0.95);
+        }
+        
+        .jump-btn {
+            width: 80px;
+            height: 80px;
+            font-size: 30px;
+        }
+        
+        /* Desktop-specific styles */
+        @media (min-width: 768px) {
+            .controls {
+                font-size: 14px;
+                margin-bottom: 10px;
+            }
+            
+            .title {
+                font-size: 28px;
+                margin-bottom: 10px;
+            }
+            
+            #gameContainer {
+                padding: 20px;
+            }
+        }
+        
+        /* Mobile-specific styles */
+        @media (max-width: 767px) {
+            body {
+                padding: 0;
+            }
+            
+            #gameContainer {
+                border-radius: 0;
+                height: 100vh;
+                max-height: 100vh;
+            }
+            
+            #mobileControls {
+                display: flex;
+            }
+            
+            .desktop-only {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div class="title">🐺 WOLF RUNNER 🐺</div>
+        <div class="controls">
+            <span class="desktop-only">Use ARROW KEYS or A/D to move • SPACE to jump • </span>
+            <span>Jump on hunters to defeat them!</span>
+        </div>
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        <div id="gameInfo">Press SPACE or TAP to start</div>
+        
+        <!-- Mobile controls -->
+        <div id="mobileControls">
+            <div class="control-group">
+                <div class="control-btn" id="leftBtn">←</div>
+                <div class="control-btn" id="rightBtn">→</div>
+            </div>
+            <div class="control-group">
+                <div class="control-btn jump-btn" id="jumpBtn">↑</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameInfo = document.getElementById('gameInfo');
+        
+        // Check if mobile device
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+        // Game state
+        let gameState = 'menu'; // menu, playing, gameOver
+        let score = 0;
+        let highScore = localStorage.getItem('wolfRunnerHighScore') || 0; // Save high score
+        let level = 1;
+        let distance = 0;
+        let scrollSpeed = 3;
+        let obstacleFrequency = 120;
+        let hunterFrequency = 300;
+        let frameCount = 0;
+        let huntersDefeated = 0;
+
+        // Wolf properties
+        const wolf = {
+            x: 100,
+            y: 300,
+            width: 40,
+            height: 30,
+            velocityY: 0,
+            jumping: false,
+            running: false,
+            frame: 0,
+            animationSpeed: 5
+        };
+
+        // Game arrays
+        let obstacles = [];
+        let hunters = [];
+        let projectiles = [];
+        let particles = [];
+        let backgroundElements = [];
+        let mountains = [];
+
+        // Controls
+        const keys = {};
+        const touches = {
+            left: false,
+            right: false,
+            jump: false
+        };
+
+        // Mobile control setup
+        if (isMobile) {
+            document.getElementById('leftBtn').addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                touches.left = true;
+            });
+            document.getElementById('leftBtn').addEventListener('touchend', (e) => {
+                e.preventDefault();
+                touches.left = false;
+            });
+            
+            document.getElementById('rightBtn').addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                touches.right = true;
+            });
+            document.getElementById('rightBtn').addEventListener('touchend', (e) => {
+                e.preventDefault();
+                touches.right = false;
+            });
+            
+            document.getElementById('jumpBtn').addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                touches.jump = true;
+                
+                // Handle game state changes
+                if (gameState === 'menu' || gameState === 'gameOver') {
+                    resetGame();
+                }
+            });
+            document.getElementById('jumpBtn').addEventListener('touchend', (e) => {
+                e.preventDefault();
+                touches.jump = false;
+            });
+            
+            // Tap to start on canvas
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (gameState === 'menu' || gameState === 'gameOver') {
+                    resetGame();
+                }
+            });
+        }
+
+        // Initialize background elements
+        function initBackground() {
+            // Create mountains (far background)
+            mountains = [];
+            for (let i = 0; i < 5; i++) {
+                mountains.push({
+                    x: i * 200 + Math.random() * 100,
+                    width: 150 + Math.random() * 100,
+                    height: 150 + Math.random() * 50,
+                    color: '#2C3347' // Darker grey-blue for mountains
+                });
+            }
+            
+            // Create only clouds for simple background
+            backgroundElements = [];
+            for (let i = 0; i < 10; i++) {
+                // Clouds in sky
+                backgroundElements.push({
+                    x: Math.random() * canvas.width * 2,
+                    y: Math.random() * 100 + 20,
+                    size: Math.random() * 30 + 20,
+                    speed: 0.3,
+                    type: 'cloud'
+                });
+            }
+        }
+
+        // Particle system
+        class Particle {
+            constructor(x, y, color, vx = null, vy = null) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx !== null ? vx : (Math.random() - 0.5) * 4;
+                this.vy = vy !== null ? vy : Math.random() * -3 - 1;
+                this.life = 1;
+                this.color = color;
+                this.size = Math.random() * 3 + 2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.1;
+                this.life -= 0.02;
+                this.size *= 0.98;
+            }
+
+            draw() {
+                ctx.globalAlpha = this.life;
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.size, this.size);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        // Obstacle class
+        class Obstacle {
+            constructor() {
+                this.width = Math.random() * 30 + 30;
+                this.height = Math.random() * 40 + 30;
+                this.x = canvas.width;
+                this.y = 330 - this.height; // Position so bottom sits at y=330 (on the green line)
+                this.type = Math.random() > 0.5 ? 'rock' : 'log';
+                this.passed = false;
+            }
+
+            update() {
+                this.x -= scrollSpeed;
+                
+                if (!this.passed && this.x + this.width < wolf.x) {
+                    this.passed = true;
+                    score += 10;
+                }
+            }
+
+            draw() {
+                if (this.type === 'rock') {
+                    // Draw boulder with organic round shape that sits on ground
+                    ctx.fillStyle = '#707070'; // Lighter grey for better visibility
+                    ctx.beginPath();
+                    // Position ellipse so bottom touches the ground
+                    ctx.ellipse(this.x + this.width/2, this.y + this.height * 0.6, 
+                               this.width/2, this.height * 0.6, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Add some depth with lighter highlight
+                    ctx.fillStyle = '#909090'; // Brighter highlight
+                    ctx.beginPath();
+                    ctx.ellipse(this.x + this.width/2 - 5, this.y + this.height * 0.5, 
+                               this.width/3, this.height * 0.4, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Add small details for texture
+                    ctx.fillStyle = '#505050'; // Darker spots for contrast
+                    ctx.beginPath();
+                    ctx.arc(this.x + this.width * 0.7, this.y + this.height * 0.7, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(this.x + this.width * 0.3, this.y + this.height * 0.8, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    // Draw fallen log with cylindrical shape sitting on ground
+                    // Main log body (positioned to sit on ground)
+                    ctx.fillStyle = '#6B4423';
+                    ctx.fillRect(this.x, this.y + this.height * 0.4, this.width, this.height * 0.6);
+                    
+                    // Top curve of log
+                    ctx.fillStyle = '#8B5A3C';
+                    ctx.beginPath();
+                    ctx.ellipse(this.x + this.width/2, this.y + this.height * 0.5, 
+                               this.width/2, this.height * 0.3, 0, 0, Math.PI, true);
+                    ctx.fill();
+                    
+                    // End of log (tree rings)
+                    ctx.fillStyle = '#4A3018';
+                    ctx.beginPath();
+                    ctx.ellipse(this.x + this.width - 5, this.y + this.height * 0.7, 
+                               8, this.height * 0.25, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // Inner rings
+                    ctx.strokeStyle = '#6B4423';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.ellipse(this.x + this.width - 5, this.y + this.height * 0.7, 
+                               5, this.height * 0.15, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                    
+                    // Bark texture lines
+                    ctx.strokeStyle = '#4A3018';
+                    for (let i = 0; i < 3; i++) {
+                        ctx.beginPath();
+                        ctx.moveTo(this.x + 10 + i * 15, this.y + this.height * 0.4);
+                        ctx.lineTo(this.x + 10 + i * 15, this.y + this.height);
+                        ctx.stroke();
+                    }
+                    
+                    // Small branch stub
+                    if (this.width > 40) {
+                        ctx.fillStyle = '#4A3018';
+                        ctx.beginPath();
+                        ctx.ellipse(this.x + this.width * 0.4, this.y + this.height * 0.3, 
+                                   4, 3, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+
+        // Hunter class
+        class Hunter {
+            constructor() {
+                this.width = 30;
+                this.height = 40;
+                this.x = canvas.width;
+                this.y = 290;
+                this.shootCooldown = 60; // Initial cooldown
+                this.passed = false;
+                this.defeated = false;
+                this.jumping = false;
+                this.velocityY = 0;
+                
+                // Check if hunter would spawn on an obstacle
+                this.checkInitialPosition();
+            }
+            
+            checkInitialPosition() {
+                // Check if hunter spawns too close to an obstacle
+                for (let obstacle of obstacles) {
+                    if (Math.abs(this.x - obstacle.x) < 100) {
+                        // Position hunter behind the obstacle
+                        this.x = obstacle.x + obstacle.width + 50;
+                    }
+                }
+            }
+
+            update() {
+                this.x -= scrollSpeed * 0.7;
+                
+                if (!this.passed && this.x + this.width < wolf.x) {
+                    this.passed = true;
+                    score += 25;
+                }
+                
+                // Check for upcoming obstacles and jump over them
+                if (!this.defeated) {
+                    for (let obstacle of obstacles) {
+                        const distanceToObstacle = obstacle.x - this.x;
+                        if (distanceToObstacle > 0 && distanceToObstacle < 60 && !this.jumping) {
+                            // Jump over obstacle
+                            this.velocityY = -8;
+                            this.jumping = true;
+                        }
+                    }
+                    
+                    // Apply gravity for jumping
+                    if (this.jumping) {
+                        this.velocityY += 0.5;
+                        this.y += this.velocityY;
+                        
+                        if (this.y >= 290) {
+                            this.y = 290;
+                            this.velocityY = 0;
+                            this.jumping = false;
+                        }
+                    }
+                }
+
+                // Shoot at wolf (only left direction)
+                this.shootCooldown--;
+                if (!this.defeated && this.shootCooldown <= 0 && this.x < canvas.width && this.x > 0) {
+                    // Only shoot if wolf is to the left and roughly at the same height
+                    if (wolf.x < this.x && Math.abs(wolf.y - this.y) < 50) {
+                        projectiles.push(new Projectile(this.x, this.y + 15, -1)); // Always shoot left
+                        this.shootCooldown = 120 - (level * 5);
+                    } else {
+                        this.shootCooldown = 40; // Try again sooner
+                    }
+                }
+            }
+
+            draw() {
+                if (this.defeated) {
+                    // Draw defeated hunter (flattened)
+                    ctx.fillStyle = '#FF6600';
+                    ctx.fillRect(this.x - 5, 325, this.width + 10, 5);
+                    return;
+                }
+                
+                // Draw hunter body (bright orange for visibility)
+                ctx.fillStyle = '#FF6600';
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                
+                // Draw hunter vest details
+                ctx.fillStyle = '#FF8C00';
+                ctx.fillRect(this.x + 5, this.y + 5, this.width - 10, this.height - 10);
+                
+                // Draw hunter head
+                ctx.fillStyle = '#FDBCB4';
+                ctx.fillRect(this.x + 5, this.y - 10, 20, 20);
+                
+                // Draw weapon (pointing left)
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(this.x - 10, this.y + 10, 15, 5);
+                
+                // Draw eye (looking left)
+                ctx.fillStyle = '#000';
+                ctx.fillRect(this.x + 8, this.y - 5, 3, 3);
+            }
+
+            defeat() {
+                this.defeated = true;
+                this.shootCooldown = 999999; // Stop shooting
+                score += 100; // Bonus points for defeating hunter
+                huntersDefeated++;
+                
+                // Victory particles
+                for (let i = 0; i < 15; i++) {
+                    particles.push(new Particle(
+                        this.x + this.width/2,
+                        this.y + this.height/2,
+                        '#FFD700',
+                        (Math.random() - 0.5) * 6,
+                        Math.random() * -5 - 2
+                    ));
+                }
+            }
+        }
+
+        // Projectile class
+        class Projectile {
+            constructor(x, y, direction) {
+                this.x = x;
+                this.y = y;
+                this.width = 8;
+                this.height = 4;
+                this.speed = 4 + (level * 0.3);
+                this.vx = direction * this.speed; // Horizontal movement only
+                this.destroyed = false;
+            }
+
+            update() {
+                this.x += this.vx;
+                
+                // Check collision with obstacles
+                obstacles.forEach(obstacle => {
+                    if (checkCollision(this, obstacle)) {
+                        this.destroyed = true;
+                        // Impact particles
+                        for (let i = 0; i < 5; i++) {
+                            particles.push(new Particle(
+                                this.x,
+                                this.y,
+                                '#FFA500'
+                            ));
+                        }
+                    }
+                });
+            }
+
+            draw() {
+                ctx.fillStyle = '#FFD700';
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                
+                // Trail effect
+                ctx.fillStyle = '#FFA500';
+                ctx.fillRect(this.x - this.vx * 0.5, this.y, this.width * 0.7, this.height * 0.7);
+            }
+        }
+
+        // Draw wolf
+        function drawWolf() {
+            ctx.save();
+            
+            // Body
+            ctx.fillStyle = '#808080';
+            ctx.fillRect(wolf.x, wolf.y, wolf.width, wolf.height);
+            
+            // Head
+            ctx.fillStyle = '#696969';
+            ctx.fillRect(wolf.x + wolf.width - 15, wolf.y - 5, 20, 20);
+            
+            // Ears
+            ctx.fillStyle = '#696969';
+            ctx.beginPath();
+            ctx.moveTo(wolf.x + wolf.width - 10, wolf.y - 5);
+            ctx.lineTo(wolf.x + wolf.width - 15, wolf.y - 12);
+            ctx.lineTo(wolf.x + wolf.width - 5, wolf.y - 5);
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.moveTo(wolf.x + wolf.width + 5, wolf.y - 5);
+            ctx.lineTo(wolf.x + wolf.width, wolf.y - 12);
+            ctx.lineTo(wolf.x + wolf.width + 10, wolf.y - 5);
+            ctx.fill();
+            
+            // Eye
+            ctx.fillStyle = wolf.running ? '#FF0000' : '#FFD700';
+            ctx.fillRect(wolf.x + wolf.width, wolf.y, 4, 4);
+            
+            // Legs animation
+            const legOffset = Math.sin(wolf.frame * 0.3) * 5;
+            ctx.fillStyle = '#606060';
+            ctx.fillRect(wolf.x + 5, wolf.y + wolf.height, 5, 10 + legOffset);
+            ctx.fillRect(wolf.x + 15, wolf.y + wolf.height, 5, 10 - legOffset);
+            ctx.fillRect(wolf.x + 25, wolf.y + wolf.height, 5, 10 + legOffset);
+            ctx.fillRect(wolf.x + 35, wolf.y + wolf.height, 5, 10 - legOffset);
+            
+            // Tail
+            const tailWag = Math.sin(wolf.frame * 0.2) * 10;
+            ctx.fillStyle = '#808080';
+            ctx.fillRect(wolf.x - 10, wolf.y + 5 + tailWag/2, 15, 8);
+            
+            ctx.restore();
+        }
+
+        // Draw background
+        function drawBackground() {
+            // Sky gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#87CEEB');
+            gradient.addColorStop(0.4, '#98D8E8');
+            gradient.addColorStop(1, '#B0E0E6');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw mountains (far background)
+            mountains.forEach(mountain => {
+                ctx.fillStyle = mountain.color;
+                ctx.beginPath();
+                ctx.moveTo(mountain.x, 330);
+                ctx.lineTo(mountain.x + mountain.width/2, 330 - mountain.height);
+                ctx.lineTo(mountain.x + mountain.width, 330);
+                ctx.fill();
+                
+                // Snow cap
+                ctx.fillStyle = '#FFF';
+                ctx.beginPath();
+                ctx.moveTo(mountain.x + mountain.width/2 - 20, 330 - mountain.height + 30);
+                ctx.lineTo(mountain.x + mountain.width/2, 330 - mountain.height);
+                ctx.lineTo(mountain.x + mountain.width/2 + 20, 330 - mountain.height + 30);
+                ctx.fill();
+            });
+            
+            // Draw clouds only
+            backgroundElements.forEach(element => {
+                if (element.type === 'cloud') {
+                    // Draw cloud
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+                    ctx.beginPath();
+                    ctx.arc(element.x, element.y, element.size/2, 0, Math.PI * 2);
+                    ctx.arc(element.x + element.size/2, element.y, element.size/3, 0, Math.PI * 2);
+                    ctx.arc(element.x - element.size/2, element.y, element.size/3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            });
+            
+            // Ground
+            ctx.fillStyle = '#8B7355';
+            ctx.fillRect(0, 330, canvas.width, 70);
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(0, 330, canvas.width, 5);
+            
+            // Add some grass texture
+            for (let i = 0; i < canvas.width; i += 20) {
+                ctx.strokeStyle = '#1F7A1F';
+                ctx.beginPath();
+                ctx.moveTo(i + Math.random() * 10, 335);
+                ctx.lineTo(i + Math.random() * 10, 330);
+                ctx.stroke();
+            }
+        }
+
+        // Collision detection
+        function checkCollision(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        // Update game
+        function update() {
+            if (gameState !== 'playing') return;
+            
+            frameCount++;
+            distance += scrollSpeed;
+            
+            // Level progression
+            if (distance > level * 1000) {
+                level++;
+                scrollSpeed += 0.5;
+                obstacleFrequency = Math.max(60, obstacleFrequency - 10);
+                hunterFrequency = Math.max(150, hunterFrequency - 20);
+                
+                // Level up effect
+                for (let i = 0; i < 20; i++) {
+                    particles.push(new Particle(
+                        wolf.x + wolf.width/2,
+                        wolf.y + wolf.height/2,
+                        '#FFD700'
+                    ));
+                }
+            }
+            
+            // Update wolf (check both keyboard and touch controls)
+            if (keys['ArrowLeft'] || keys['a'] || keys['A'] || touches.left) {
+                wolf.x = Math.max(50, wolf.x - 4);
+            }
+            if (keys['ArrowRight'] || keys['d'] || keys['D'] || touches.right) {
+                wolf.x = Math.min(canvas.width - 100, wolf.x + 4);
+            }
+            
+            // Jumping (check both keyboard and touch)
+            if ((keys[' '] || keys['ArrowUp'] || keys['w'] || keys['W'] || touches.jump) && !wolf.jumping) {
+                wolf.velocityY = -12;
+                wolf.jumping = true;
+            }
+            
+            // Gravity
+            wolf.velocityY += 0.5;
+            wolf.y += wolf.velocityY;
+            
+            // Ground collision
+            if (wolf.y > 300) {
+                wolf.y = 300;
+                wolf.velocityY = 0;
+                wolf.jumping = false;
+            }
+            
+            // Animation
+            if (!wolf.jumping) {
+                wolf.frame++;
+            }
+            
+            // Spawn obstacles
+            if (frameCount % obstacleFrequency === 0) {
+                obstacles.push(new Obstacle());
+            }
+            
+            // Spawn hunters
+            if (frameCount % hunterFrequency === 0) {
+                hunters.push(new Hunter());
+            }
+            
+            // Update obstacles
+            obstacles = obstacles.filter(obstacle => {
+                obstacle.update();
+                
+                // Check collision with wolf
+                if (checkCollision(wolf, obstacle)) {
+                    gameOver();
+                    return false;
+                }
+                
+                return obstacle.x > -obstacle.width;
+            });
+            
+            // Update hunters
+            hunters = hunters.filter(hunter => {
+                hunter.update();
+                
+                if (!hunter.defeated) {
+                    // Check if wolf is landing on hunter (Mario-style stomp)
+                    if (wolf.velocityY > 0 && // Wolf is falling
+                        wolf.y + wolf.height <= hunter.y + 10 && // Wolf is above hunter
+                        wolf.y + wolf.height >= hunter.y - 10 && // But close enough
+                        wolf.x + wolf.width > hunter.x && // Horizontal overlap
+                        wolf.x < hunter.x + hunter.width) {
+                        
+                        hunter.defeat();
+                        wolf.velocityY = -8; // Bounce off hunter
+                        return true;
+                    }
+                    
+                    // Regular collision (game over)
+                    if (checkCollision(wolf, hunter)) {
+                        gameOver();
+                        return false;
+                    }
+                }
+                
+                return hunter.x > -hunter.width;
+            });
+            
+            // Update projectiles
+            projectiles = projectiles.filter(projectile => {
+                if (projectile.destroyed) return false;
+                
+                projectile.update();
+                
+                // Check collision with wolf
+                if (checkCollision(wolf, projectile)) {
+                    gameOver();
+                    return false;
+                }
+                
+                return projectile.x > -10 && projectile.x < canvas.width + 10;
+            });
+            
+            // Update particles
+            particles = particles.filter(particle => {
+                particle.update();
+                return particle.life > 0;
+            });
+            
+            // Update background elements
+            backgroundElements.forEach(element => {
+                element.x -= element.speed;
+                if (element.x < -element.size) {
+                    element.x = canvas.width + Math.random() * 200;
+                    if (element.type === 'cloud') {
+                        element.y = Math.random() * 100 + 20;
+                    }
+                }
+            });
+            
+            // Update mountains (slowest parallax)
+            mountains.forEach(mountain => {
+                mountain.x -= 0.2;
+                if (mountain.x + mountain.width < 0) {
+                    mountain.x = canvas.width + Math.random() * 100;
+                }
+            });
+            
+            // Update score
+            score += 1;
+        }
+
+        // Draw game
+        function draw() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw background
+            drawBackground();
+            
+            // Draw particles (behind everything)
+            particles.forEach(particle => particle.draw());
+            
+            // Draw obstacles
+            obstacles.forEach(obstacle => obstacle.draw());
+            
+            // Draw hunters
+            hunters.forEach(hunter => hunter.draw());
+            
+            // Draw projectiles
+            projectiles.forEach(projectile => projectile.draw());
+            
+            // Draw wolf
+            drawWolf();
+            
+            // Draw UI - Left side
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 20px Courier New';
+            ctx.fillText(`Score: ${score}`, 20, 30);
+            ctx.fillText(`Level: ${level}`, 20, 55);
+            ctx.fillText(`Distance: ${Math.floor(distance/10)}m`, 20, 80);
+            
+            // Draw High Score - Right side
+            ctx.textAlign = 'right';
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 24px Courier New';
+            ctx.fillText(`High Score: ${highScore}`, canvas.width - 20, 30);
+            
+            // Draw hunters defeated count
+            if (huntersDefeated > 0) {
+                ctx.fillStyle = '#90EE90';
+                ctx.font = 'bold 18px Courier New';
+                ctx.fillText(`Hunters Defeated: ${huntersDefeated}`, canvas.width - 20, 55);
+            }
+            ctx.textAlign = 'left';
+            
+            // Draw game over screen
+            if (gameState === 'gameOver') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = '#FFF';
+                ctx.font = isMobile ? 'bold 36px Courier New' : 'bold 48px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText('GAME OVER', canvas.width/2, canvas.height/2 - 80);
+                
+                ctx.font = isMobile ? 'bold 20px Courier New' : 'bold 24px Courier New';
+                ctx.fillText(`Final Score: ${score}`, canvas.width/2, canvas.height/2 - 20);
+                ctx.fillText(`Level Reached: ${level}`, canvas.width/2, canvas.height/2 + 10);
+                ctx.fillText(`Distance: ${Math.floor(distance/10)}m`, canvas.width/2, canvas.height/2 + 40);
+                ctx.fillText(`Hunters Defeated: ${huntersDefeated}`, canvas.width/2, canvas.height/2 + 70);
+                
+                if (score === highScore && score > 0) {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.font = isMobile ? 'bold 24px Courier New' : 'bold 28px Courier New';
+                    ctx.fillText('NEW HIGH SCORE!', canvas.width/2, canvas.height/2 - 110);
+                }
+                
+                ctx.fillStyle = '#FFF';
+                ctx.font = isMobile ? 'bold 18px Courier New' : 'bold 20px Courier New';
+                ctx.fillText(isMobile ? 'Tap to restart' : 'Press SPACE to restart', canvas.width/2, canvas.height/2 + 120);
+                ctx.textAlign = 'left';
+            }
+            
+            // Draw menu screen
+            if (gameState === 'menu') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = '#FFF';
+                ctx.font = isMobile ? 'bold 36px Courier New' : 'bold 48px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText('WOLF RUNNER', canvas.width/2, canvas.height/2 - 80);
+                
+                ctx.font = isMobile ? 'bold 18px Courier New' : 'bold 20px Courier New';
+                ctx.fillText('Survive the wilderness!', canvas.width/2, canvas.height/2 - 20);
+                ctx.fillText('Avoid obstacles and projectiles', canvas.width/2, canvas.height/2 + 10);
+                ctx.fillStyle = '#90EE90';
+                ctx.fillText('Jump on hunters to defeat them!', canvas.width/2, canvas.height/2 + 40);
+                
+                ctx.fillStyle = '#FFF';
+                ctx.font = isMobile ? 'bold 20px Courier New' : 'bold 24px Courier New';
+                ctx.fillText(isMobile ? 'Tap to start' : 'Press SPACE to start', canvas.width/2, canvas.height/2 + 90);
+                
+                if (highScore > 0) {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.font = isMobile ? 'bold 16px Courier New' : 'bold 18px Courier New';
+                    ctx.fillText(`Best Score: ${highScore}`, canvas.width/2, canvas.height/2 + 130);
+                }
+                
+                ctx.textAlign = 'left';
+            }
+        }
+
+        // Game over
+        function gameOver() {
+            gameState = 'gameOver';
+            
+            // Update high score
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('wolfRunnerHighScore', highScore);
+            }
+            
+            gameInfo.textContent = `Game Over! Score: ${score} | Level: ${level} | Distance: ${Math.floor(distance/10)}m | Hunters Defeated: ${huntersDefeated}`;
+            
+            // Explosion effect
+            for (let i = 0; i < 30; i++) {
+                particles.push(new Particle(
+                    wolf.x + wolf.width/2,
+                    wolf.y + wolf.height/2,
+                    '#FF0000'
+                ));
+            }
+        }
+
+        // Reset game
+        function resetGame() {
+            gameState = 'playing';
+            score = 0;
+            level = 1;
+            distance = 0;
+            scrollSpeed = 3;
+            obstacleFrequency = 120;
+            hunterFrequency = 300;
+            frameCount = 0;
+            huntersDefeated = 0;
+            
+            wolf.x = 100;
+            wolf.y = 300;
+            wolf.velocityY = 0;
+            wolf.jumping = false;
+            wolf.frame = 0;
+            
+            obstacles = [];
+            hunters = [];
+            projectiles = [];
+            particles = [];
+            
+            initBackground();
+            gameInfo.textContent = 'Game Started! Jump on hunters to defeat them!';
+        }
+
+        // Game loop
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Event listeners
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            
+            if (e.key === ' ') {
+                e.preventDefault();
+                if (gameState === 'menu') {
+                    resetGame();
+                } else if (gameState === 'gameOver') {
+                    resetGame();
+                }
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // Initialize game
+        initBackground();
+        gameLoop();
+    </script>
+</body>
+</html>
